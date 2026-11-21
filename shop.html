@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shop All Goods — SindhCraft</title>
+  <meta name="description" content="Filter and sort the complete SindhCraft catalog of everyday carry, desk accessories, and home goods priced in PKR.">
+  <meta property="og:title" content="Shop All Goods — SindhCraft">
+  <meta property="og:description" content="Filter and sort the complete SindhCraft catalog priced in PKR.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <div class="page-header">
+      <div class="container-wide">
+        <nav class="breadcrumbs" aria-label="Breadcrumb">
+          <a href="/index.html">Home</a>
+          <span>/</span>
+          <span aria-current="page">Shop All</span>
+        </nav>
+        <h1 class="page-title">Shop All Craft Goods</h1>
+        <p class="page-lead">Filter by department, color, or price range across our live workshop catalog.</p>
+      </div>
+    </div>
+
+    <div class="container-wide shop-layout">
+      <aside class="filter-panel" aria-label="Catalog filters" id="shop-filters">
+        <div class="filter-group" id="filter-categories-group"></div>
+        <div id="filter-facets-group"></div>
+        <div class="filter-group">
+          <span class="filter-legend">Price (PKR)</span>
+          <div class="price-pair">
+            <input class="field-input" type="number" id="filter-min-price" placeholder="Min" aria-label="Minimum price">
+            <input class="field-input" type="number" id="filter-max-price" placeholder="Max" aria-label="Maximum price">
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="filter-in-stock">
+            <span>In stock only</span>
+          </label>
+        </div>
+        <button type="button" class="btn-secondary" id="filter-clear-btn" hidden>Clear all filters</button>
+      </aside>
+
+      <section aria-label="Product results">
+        <div class="shop-toolbar">
+          <form class="toolbar-search" id="shop-search-form">
+            <input class="field-input" type="search" id="shop-search-input" placeholder="Search products…" aria-label="Search products">
+            <button type="submit" class="btn-secondary">Search</button>
+          </form>
+          <div class="toolbar-right">
+            <span class="result-count" id="shop-count"></span>
+            <label class="sr-only" for="shop-sort">Sort products</label>
+            <select class="sort-select" id="shop-sort"></select>
+          </div>
+        </div>
+
+        <div id="shop-grid-mount"></div>
+
+        <div class="load-more-wrap">
+          <button type="button" class="btn-secondary" id="shop-load-more" hidden>Load more products</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script type="module">
+    import { createShopStore, SORTS } from "/js/wix/shop-store.js";
+    import { subscribeCart } from "/js/wix/cart-store.js";
+    import { initSiteShell, renderProductTile, bindTileQuickAdd, esc } from "/js/ui-shell.js";
+
+    initSiteShell({ activePath: "shop" });
+
+    const shop = createShopStore();
+    const sortEl = document.getElementById("shop-sort");
+    const countEl = document.getElementById("shop-count");
+    const gridMount = document.getElementById("shop-grid-mount");
+    const moreEl = document.getElementById("shop-load-more");
+    const catGroupEl = document.getElementById("filter-categories-group");
+    const facetsGroupEl = document.getElementById("filter-facets-group");
+    const minPriceEl = document.getElementById("filter-min-price");
+    const maxPriceEl = document.getElementById("filter-max-price");
+    const inStockEl = document.getElementById("filter-in-stock");
+    const clearBtn = document.getElementById("filter-clear-btn");
+    const searchForm = document.getElementById("shop-search-form");
+    const searchInput = document.getElementById("shop-search-input");
+
+    bindTileQuickAdd(gridMount);
+
+    Object.keys(SORTS).forEach((key) => {
+      sortEl.add(new Option(SORTS[key].label, key));
+    });
+
+    sortEl.addEventListener("change", () => shop.setSort(sortEl.value));
+    moreEl.addEventListener("click", () => shop.loadMore());
+    clearBtn.addEventListener("click", () => {
+      minPriceEl.value = "";
+      maxPriceEl.value = "";
+      inStockEl.checked = false;
+      searchInput.value = "";
+      shop.clearFilters();
+    });
+
+    searchForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      shop.setFilters({ search: searchInput.value.trim() || undefined });
+    });
+
+    function syncPriceAndStock() {
+      const minVal = minPriceEl.value !== "" ? Number(minPriceEl.value) : undefined;
+      const maxVal = maxPriceEl.value !== "" ? Number(maxPriceEl.value) : undefined;
+      shop.setFilters({
+        minPrice: Number.isFinite(minVal) ? minVal : undefined,
+        maxPrice: Number.isFinite(maxVal) ? maxVal : undefined,
+        inStockOnly: inStockEl.checked || undefined
+      });
+    }
+
+    minPriceEl.addEventListener("change", syncPriceAndStock);
+    maxPriceEl.addEventListener("change", syncPriceAndStock);
+    inStockEl.addEventListener("change", syncPriceAndStock);
+
+    facetsGroupEl.addEventListener("click", (e) => {
+      const chip = e.target.closest("[data-choice-id]");
+      if (chip) shop.toggleChoice(chip.dataset.choiceId);
+    });
+
+    gridMount.addEventListener("click", (e) => {
+      if (e.target.closest("[data-retry-shop]")) shop.retry();
+      if (e.target.closest("[data-clear-empty]")) clearBtn.click();
+    });
+
+    let pendingProductId = null;
+    let latestState = shop.getState();
+
+    function render(s) {
+      latestState = s;
+      if (s.sort && sortEl.value !== s.sort) sortEl.value = s.sort;
+      countEl.textContent = s.total === null ? "" : `${s.total} ${s.total === 1 ? "product" : "products"}`;
+      clearBtn.hidden = !s.hasActiveFilters;
+      moreEl.hidden = !s.hasMore;
+      moreEl.disabled = Boolean(s.loadingMore);
+      moreEl.textContent = s.loadingMore ? "Loading…" : "Load more products";
+
+      if (s.priceRange) {
+        minPriceEl.min = String(s.priceRange.min);
+        minPriceEl.max = String(s.priceRange.max);
+        maxPriceEl.min = String(s.priceRange.min);
+        maxPriceEl.max = String(s.priceRange.max);
+      }
+
+      const cats = (s.categories || []).filter((c) => c.slug && c.slug !== "all-products");
+      catGroupEl.innerHTML = cats.length
+        ? `<span class="filter-legend">Departments</span><ul class="filter-list">${cats
+            .map(
+              (c) => `<li><a class="filter-cat-link" href="/category.html?slug=${encodeURIComponent(c.slug)}"><span>${esc(c.name)}</span></a></li>`
+            )
+            .join("")}</ul>`
+        : "";
+
+      const selected = new Set(s.selectedChoiceIds || []);
+      facetsGroupEl.innerHTML = (s.facets || [])
+        .map(
+          (f) => `
+          <div class="filter-group">
+            <span class="filter-legend">${esc(f.name)}</span>
+            <div class="facet-choices">
+              ${f.choices
+                .map((ch) => {
+                  const active = selected.has(ch.id);
+                  const dot = f.isColor && ch.colorCode
+                    ? `<span class="swatch-dot" style="background-color:${esc(ch.colorCode)}"></span>`
+                    : "";
+                  return `<button type="button" class="facet-chip" data-choice-id="${esc(ch.id)}" aria-pressed="${active}">${dot}<span>${esc(ch.name)} (${ch.count})</span></button>`;
+                })
+                .join("")}
+            </div>
+          </div>
+        `
+        )
+        .join("");
+
+      if (s.error && !s.products) {
+        gridMount.innerHTML = `<div class="state-box"><h2>Unable to load catalog</h2><p class="error-text">${esc(s.error)}</p><button type="button" class="btn-primary" data-retry-shop>Try again</button></div>`;
+        return;
+      }
+
+      if (s.products === null) {
+        gridMount.innerHTML = `<div class="skeleton-grid">${'<div class="skeleton-card"></div>'.repeat(6)}</div>`;
+        return;
+      }
+
+      if (!s.products.length) {
+        gridMount.innerHTML = s.hasActiveFilters
+          ? `<div class="state-box"><h2>No matching products</h2><p>No items match your active filter combination.</p><button type="button" class="btn-primary" data-clear-empty>Clear filters</button></div>`
+          : `<div class="state-box"><h2>Catalog is empty</h2><p>No products are currently published in this store.</p></div>`;
+        return;
+      }
+
+      gridMount.innerHTML = `<div class="product-grid${s.loading ? " is-dimmed" : ""}">${s.products
+        .map((p) => renderProductTile(p, pendingProductId))
+        .join("")}</div>`;
+    }
+
+    subscribeCart((cs) => {
+      if (cs.pendingProductId !== pendingProductId) {
+        pendingProductId = cs.pendingProductId;
+        render(latestState);
+      }
+    });
+
+    shop.subscribe(render);
+    render(shop.getState());
+    shop.start();
+  </script>
+</body>
+</html>

@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SindhCraft — Contemporary Sindhi Craft, Carry &amp; Home Goods</title>
+  <meta name="description" content="Browse small-batch Sindhi craft goods, everyday carry, desk accessories, and home decor priced in PKR and shipped across Pakistan.">
+  <meta property="og:title" content="SindhCraft — Contemporary Sindhi Craft, Carry &amp; Home Goods">
+  <meta property="og:description" content="Browse small-batch Sindhi craft goods, everyday carry, desk accessories, and home decor priced in PKR.">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <section class="hero-band">
+      <div class="container-wide hero-grid">
+        <div>
+          <p class="kicker">Contemporary Sindhi Craft Store · Hyderabad &amp; Karachi</p>
+          <h1 class="hero-title">Handcrafted Sindhi Carry, Desk &amp; Home Goods</h1>
+          <p class="hero-subtitle">Browse small-batch brass hardware, natural-dyed Ajrak textiles, and hand-turned woodwork priced in PKR and shipped nationwide.</p>
+          <div class="hero-actions">
+            <a class="btn-primary" href="/shop.html">Shop the catalog</a>
+            <a class="btn-secondary" href="/category.html?slug=everyday-carry">Explore everyday carry</a>
+          </div>
+        </div>
+        <div class="hero-media" id="hero-showcase">
+          <div class="tile-placeholder">Loading featured workshop piece…</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-block" aria-labelledby="categories-heading">
+      <div class="container-wide">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title" id="categories-heading">Shop by Department</h2>
+            <p class="section-desc">Curated collections built around daily utility and regional craft traditions.</p>
+          </div>
+          <a class="btn-text" href="/shop.html">View all products</a>
+        </div>
+        <div class="category-grid" id="home-categories">
+          <div class="state-box"><p>Loading departments…</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section-block" aria-labelledby="featured-heading">
+      <div class="container-wide">
+        <div class="section-head">
+          <div>
+            <h2 class="section-title" id="featured-heading">Featured Workshop Pieces</h2>
+            <p class="section-desc">Live catalog availability with direct cart checkout in PKR.</p>
+          </div>
+          <a class="btn-text" href="/shop.html">Browse full catalog</a>
+        </div>
+        <div class="product-grid" id="home-featured-grid"></div>
+      </div>
+    </section>
+
+    <section class="section-block craft-band" aria-label="Workshop standards">
+      <div class="container-wide craft-grid">
+        <div class="craft-item">
+          <h3>Regional Materials</h3>
+          <p>Solid cast brass, hand-loomed cotton, and seasoned local hardwood finished in small workshop runs.</p>
+        </div>
+        <div class="craft-item">
+          <h3>Transparent PKR Pricing</h3>
+          <p>Every item lists live stock status and exact variant pricing before you reach checkout.</p>
+        </div>
+        <div class="craft-item">
+          <h3>Nationwide Dispatch</h3>
+          <p>Packed in protective plastic-free kraft wraps for delivery across Sindh and major cities in Pakistan.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script type="module">
+    import { fetchProducts, fetchCategories } from "/js/wix/catalog.js";
+    import { subscribeCart } from "/js/wix/cart-store.js";
+    import { imgSrc } from "/js/wix/media.js";
+    import { initSiteShell, renderProductTile, bindTileQuickAdd, esc } from "/js/ui-shell.js";
+
+    initSiteShell({ activePath: "home" });
+
+    const heroEl = document.getElementById("hero-showcase");
+    const catGridEl = document.getElementById("home-categories");
+    const prodGridEl = document.getElementById("home-featured-grid");
+    bindTileQuickAdd(prodGridEl);
+
+    let featuredProducts = [];
+    let pendingId = null;
+
+    function drawFeatured() {
+      if (!featuredProducts.length) return;
+      prodGridEl.innerHTML = featuredProducts.map((p) => renderProductTile(p, pendingId)).join("");
+    }
+
+    subscribeCart((s) => {
+      if (s.pendingProductId !== pendingId) {
+        pendingId = s.pendingProductId;
+        drawFeatured();
+      }
+    });
+
+    async function loadHome() {
+      try {
+        const [cats, prods] = await Promise.all([
+          fetchCategories(),
+          fetchProducts({ limit: 8 })
+        ]);
+
+        const visibleCats = (cats || []).filter((c) => c.slug && c.slug !== "all-products");
+        if (visibleCats.length) {
+          catGridEl.innerHTML = visibleCats
+            .map(
+              (c) => `
+              <a class="category-card" href="/category.html?slug=${encodeURIComponent(c.slug)}">
+                <div>
+                  <h3>${esc(c.name)}</h3>
+                  ${c.description ? `<p>${esc(c.description)}</p>` : ""}
+                </div>
+                <span class="category-meta">Browse collection &rarr;</span>
+              </a>
+            `
+            )
+            .join("");
+        } else {
+          catGridEl.innerHTML = `<div class="state-box"><p>Explore our complete catalog on the shop page.</p><a class="btn-secondary" href="/shop.html">Open shop</a></div>`;
+        }
+
+        featuredProducts = prods || [];
+        if (featuredProducts.length) {
+          drawFeatured();
+          const heroItem = featuredProducts.find((p) => p.imageUrl) || featuredProducts[0];
+          if (heroItem && heroItem.imageUrl) {
+            heroEl.innerHTML = `
+              <a href="/product.html?slug=${encodeURIComponent(heroItem.slug)}" style="display:block;width:100%;height:100%;">
+                <img src="${esc(imgSrc(heroItem.imageUrl, 1000, 750))}" alt="${esc(heroItem.name)}">
+                <div class="hero-media-caption">
+                  <span>${esc(heroItem.name)}</span>
+                  <strong>${esc(heroItem.price)}</strong>
+                </div>
+              </a>
+            `;
+          } else {
+            heroEl.innerHTML = `<div class="tile-placeholder">SindhCraft Workshop Collection</div>`;
+          }
+        } else {
+          prodGridEl.innerHTML = `<div class="state-box"><h2>No products published yet</h2><p>Check back shortly as new workshop batches are added.</p></div>`;
+          heroEl.innerHTML = `<div class="tile-placeholder">SindhCraft Workshop Collection</div>`;
+        }
+      } catch (err) {
+        prodGridEl.innerHTML = `<div class="state-box"><p class="error-text">${esc(err?.message || "Unable to load products right now.")}</p></div>`;
+      }
+    }
+
+    loadHome();
+  </script>
+</body>
+</html>

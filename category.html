@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Department — SindhCraft</title>
+  <meta name="description" content="Browse curated SindhCraft workshop pieces by department, priced in PKR.">
+  <meta property="og:title" content="Department — SindhCraft">
+  <meta property="og:type" content="website">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main>
+    <div class="page-header">
+      <div class="container-wide">
+        <nav class="breadcrumbs" id="cat-breadcrumbs" aria-label="Breadcrumb">
+          <a href="/index.html">Home</a>
+          <span>/</span>
+          <a href="/shop.html">Shop</a>
+        </nav>
+        <h1 class="page-title" id="cat-title">Department</h1>
+        <p class="page-lead" id="cat-description"></p>
+      </div>
+    </div>
+
+    <div class="container-wide shop-layout" id="cat-shop-shell">
+      <aside class="filter-panel" aria-label="Department filters">
+        <div class="filter-group" id="cat-departments-group"></div>
+        <div id="cat-facets-group"></div>
+        <div class="filter-group">
+          <span class="filter-legend">Price (PKR)</span>
+          <div class="price-pair">
+            <input class="field-input" type="number" id="cat-min-price" placeholder="Min" aria-label="Minimum price">
+            <input class="field-input" type="number" id="cat-max-price" placeholder="Max" aria-label="Maximum price">
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="checkbox-row">
+            <input type="checkbox" id="cat-in-stock">
+            <span>In stock only</span>
+          </label>
+        </div>
+        <button type="button" class="btn-secondary" id="cat-clear-btn" hidden>Clear filters</button>
+      </aside>
+
+      <section aria-label="Department products">
+        <div class="shop-toolbar">
+          <form class="toolbar-search" id="cat-search-form">
+            <input class="field-input" type="search" id="cat-search-input" placeholder="Search in department…" aria-label="Search in department">
+            <button type="submit" class="btn-secondary">Search</button>
+          </form>
+          <div class="toolbar-right">
+            <span class="result-count" id="cat-count"></span>
+            <label class="sr-only" for="cat-sort">Sort products</label>
+            <select class="sort-select" id="cat-sort"></select>
+          </div>
+        </div>
+
+        <div id="cat-grid-mount"></div>
+
+        <div class="load-more-wrap">
+          <button type="button" class="btn-secondary" id="cat-load-more" hidden>Load more products</button>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script type="module">
+    import { fetchCategoryBySlug } from "/js/wix/catalog.js";
+    import { createShopStore, SORTS } from "/js/wix/shop-store.js";
+    import { subscribeCart } from "/js/wix/cart-store.js";
+    import { initSiteShell, renderProductTile, bindTileQuickAdd, esc } from "/js/ui-shell.js";
+
+    initSiteShell();
+
+    const slug = new URLSearchParams(location.search).get("slug") || "";
+    const titleEl = document.getElementById("cat-title");
+    const descEl = document.getElementById("cat-description");
+    const crumbsEl = document.getElementById("cat-breadcrumbs");
+    const shellEl = document.getElementById("cat-shop-shell");
+    const gridMount = document.getElementById("cat-grid-mount");
+
+    async function initCategory() {
+      if (!slug) {
+        titleEl.textContent = "Department not found";
+        shellEl.innerHTML = `<div class="state-box" style="grid-column:1/-1;"><h2>Department not found</h2><p>Choose a department from the catalog.</p><a class="btn-primary" href="/shop.html">Shop all goods</a></div>`;
+        return;
+      }
+
+      const category = await fetchCategoryBySlug(slug);
+      if (!category) {
+        document.title = "Department Not Found — SindhCraft";
+        titleEl.textContent = "Department not found";
+        shellEl.innerHTML = `<div class="state-box" style="grid-column:1/-1;"><h2>Department not found</h2><p>The department you requested does not exist or is no longer active.</p><a class="btn-primary" href="/shop.html">Browse all products</a></div>`;
+        return;
+      }
+
+      document.title = `${category.name} — SindhCraft`;
+      titleEl.textContent = category.name;
+      descEl.textContent = category.description || "";
+      if (category.description) {
+        const metaDesc = document.querySelector('meta[name="description"]');
+        if (metaDesc) metaDesc.setAttribute("content", category.description);
+      }
+
+      const trail = [
+        `<a href="/index.html">Home</a>`,
+        `<a href="/shop.html">Shop</a>`,
+        ...(category.breadcrumbs || []).map(
+          (b) => `<a href="/category.html?slug=${encodeURIComponent(b.slug)}">${esc(b.name)}</a>`
+        ),
+        `<span aria-current="page">${esc(category.name)}</span>`
+      ];
+      crumbsEl.innerHTML = trail.join(" <span>/</span> ");
+
+      const shop = createShopStore({ initialCategoryId: category.id });
+      const sortEl = document.getElementById("cat-sort");
+      const countEl = document.getElementById("cat-count");
+      const moreEl = document.getElementById("cat-load-more");
+      const deptsGroupEl = document.getElementById("cat-departments-group");
+      const facetsGroupEl = document.getElementById("cat-facets-group");
+      const minPriceEl = document.getElementById("cat-min-price");
+      const maxPriceEl = document.getElementById("cat-max-price");
+      const inStockEl = document.getElementById("cat-in-stock");
+      const clearBtn = document.getElementById("cat-clear-btn");
+      const searchForm = document.getElementById("cat-search-form");
+      const searchInput = document.getElementById("cat-search-input");
+
+      bindTileQuickAdd(gridMount);
+
+      Object.keys(SORTS).forEach((key) => {
+        sortEl.add(new Option(SORTS[key].label, key));
+      });
+
+      sortEl.addEventListener("change", () => shop.setSort(sortEl.value));
+      moreEl.addEventListener("click", () => shop.loadMore());
+      clearBtn.addEventListener("click", () => {
+        minPriceEl.value = "";
+        maxPriceEl.value = "";
+        inStockEl.checked = false;
+        searchInput.value = "";
+        shop.clearFilters();
+      });
+
+      searchForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        shop.setFilters({ search: searchInput.value.trim() || undefined });
+      });
+
+      function syncFilters() {
+        const minVal = minPriceEl.value !== "" ? Number(minPriceEl.value) : undefined;
+        const maxVal = maxPriceEl.value !== "" ? Number(maxPriceEl.value) : undefined;
+        shop.setFilters({
+          minPrice: Number.isFinite(minVal) ? minVal : undefined,
+          maxPrice: Number.isFinite(maxVal) ? maxVal : undefined,
+          inStockOnly: inStockEl.checked || undefined
+        });
+      }
+
+      minPriceEl.addEventListener("change", syncFilters);
+      maxPriceEl.addEventListener("change", syncFilters);
+      inStockEl.addEventListener("change", syncFilters);
+
+      facetsGroupEl.addEventListener("click", (e) => {
+        const chip = e.target.closest("[data-choice-id]");
+        if (chip) shop.toggleChoice(chip.dataset.choiceId);
+      });
+
+      gridMount.addEventListener("click", (e) => {
+        if (e.target.closest("[data-retry-cat]")) shop.retry();
+        if (e.target.closest("[data-clear-empty]")) clearBtn.click();
+      });
+
+      let pendingProductId = null;
+      let latestState = shop.getState();
+
+      function render(s) {
+        latestState = s;
+        if (s.sort && sortEl.value !== s.sort) sortEl.value = s.sort;
+        countEl.textContent = s.total === null ? "" : `${s.total} ${s.total === 1 ? "product" : "products"}`;
+        clearBtn.hidden = !s.hasActiveFilters;
+        moreEl.hidden = !s.hasMore;
+        moreEl.disabled = Boolean(s.loadingMore);
+        moreEl.textContent = s.loadingMore ? "Loading…" : "Load more products";
+
+        const cats = (s.categories || []).filter((c) => c.slug && c.slug !== "all-products");
+        deptsGroupEl.innerHTML = cats.length
+          ? `<span class="filter-legend">Departments</span><ul class="filter-list">${cats
+              .map(
+                (c) => `<li><a class="filter-cat-link" href="/category.html?slug=${encodeURIComponent(c.slug)}"${c.slug === category.slug ? ' aria-current="page"' : ""}><span>${esc(c.name)}</span></a></li>`
+              )
+              .join("")}</ul>`
+          : "";
+
+        const selected = new Set(s.selectedChoiceIds || []);
+        facetsGroupEl.innerHTML = (s.facets || [])
+          .map(
+            (f) => `
+            <div class="filter-group">
+              <span class="filter-legend">${esc(f.name)}</span>
+              <div class="facet-choices">
+                ${f.choices
+                  .map((ch) => {
+                    const active = selected.has(ch.id);
+                    const dot = f.isColor && ch.colorCode
+                      ? `<span class="swatch-dot" style="background-color:${esc(ch.colorCode)}"></span>`
+                      : "";
+                    return `<button type="button" class="facet-chip" data-choice-id="${esc(ch.id)}" aria-pressed="${active}">${dot}<span>${esc(ch.name)} (${ch.count})</span></button>`;
+                  })
+                  .join("")}
+              </div>
+            </div>
+          `
+          )
+          .join("");
+
+        if (s.error && !s.products) {
+          gridMount.innerHTML = `<div class="state-box"><h2>Unable to load department</h2><p class="error-text">${esc(s.error)}</p><button type="button" class="btn-primary" data-retry-cat>Try again</button></div>`;
+          return;
+        }
+
+        if (s.products === null) {
+          gridMount.innerHTML = `<div class="skeleton-grid">${'<div class="skeleton-card"></div>'.repeat(4)}</div>`;
+          return;
+        }
+
+        if (!s.products.length) {
+          gridMount.innerHTML = s.hasActiveFilters
+            ? `<div class="state-box"><h2>No matching products</h2><p>No items in ${esc(category.name)} match these filters.</p><button type="button" class="btn-primary" data-clear-empty>Clear filters</button></div>`
+            : `<div class="state-box"><h2>No products in this department</h2><p>Browse our other departments or full catalog.</p><a class="btn-primary" href="/shop.html">Shop all goods</a></div>`;
+          return;
+        }
+
+        gridMount.innerHTML = `<div class="product-grid${s.loading ? " is-dimmed" : ""}">${s.products
+          .map((p) => renderProductTile(p, pendingProductId))
+          .join("")}</div>`;
+      }
+
+      subscribeCart((cs) => {
+        if (cs.pendingProductId !== pendingProductId) {
+          pendingProductId = cs.pendingProductId;
+          render(latestState);
+        }
+      });
+
+      shop.subscribe(render);
+      render(shop.getState());
+      shop.start();
+    }
+
+    initCategory();
+  </script>
+</body>
+</html>

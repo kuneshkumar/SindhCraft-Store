@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Product — SindhCraft</title>
+  <meta name="description" content="Explore product specifications, finish options, and live stock availability at SindhCraft.">
+  <meta property="og:title" content="Product — SindhCraft">
+  <meta property="og:type" content="product">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="site-header"></div>
+
+  <main class="pdp-shell">
+    <div class="container-wide" id="pdp-root">
+      <div class="state-box"><p>Loading product details…</p></div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+
+  <script type="module">
+    import { createProductDetailStore, ONE_TIME_PLAN } from "/js/wix/product-detail-store.js";
+    import { imgSrc } from "/js/wix/media.js";
+    import { initSiteShell, esc } from "/js/ui-shell.js";
+
+    initSiteShell();
+
+    const slug = new URLSearchParams(location.search).get("slug") || "";
+    const root = document.getElementById("pdp-root");
+    const store = createProductDetailStore({ slug });
+
+    let activeGalleryUrl = null;
+    let notifyEmail = "";
+
+    root.addEventListener("click", (e) => {
+      const thumbBtn = e.target.closest("[data-thumb-url]");
+      if (thumbBtn) {
+        activeGalleryUrl = thumbBtn.dataset.thumbUrl;
+        render(store.getState());
+        return;
+      }
+
+      const optBtn = e.target.closest("[data-option]");
+      if (optBtn) {
+        activeGalleryUrl = null;
+        store.selectOption(optBtn.dataset.option, optBtn.dataset.choice);
+        return;
+      }
+
+      const modChoiceBtn = e.target.closest("[data-mod-key]");
+      if (modChoiceBtn) {
+        store.setModifier(modChoiceBtn.dataset.modKey, modChoiceBtn.dataset.modChoice);
+        return;
+      }
+
+      const planBtn = e.target.closest("[data-plan-id]");
+      if (planBtn) {
+        store.selectPlan(planBtn.dataset.planId);
+        return;
+      }
+
+      const stepBtn = e.target.closest("[data-step]");
+      if (stepBtn) {
+        store.setQuantity(store.getState().quantity + Number(stepBtn.dataset.step));
+        return;
+      }
+
+      if (e.target.closest("[data-add]")) {
+        store.add().catch(() => {});
+      }
+    });
+
+    root.addEventListener("input", (e) => {
+      if (e.target.matches("[data-mod-text]")) {
+        store.setModifier(e.target.dataset.modText, e.target.value);
+      }
+      if (e.target.matches("#pdp-notify-email")) {
+        notifyEmail = e.target.value;
+      }
+    });
+
+    root.addEventListener("submit", (e) => {
+      if (e.target.matches("#pdp-notify-form")) {
+        e.preventDefault();
+        if (notifyEmail.trim()) {
+          store.notify(notifyEmail.trim()).catch(() => {});
+        }
+      }
+    });
+
+    function render(s) {
+      if (!s.product) {
+        if (s.notFound) {
+          document.title = "Product Not Found — SindhCraft";
+          root.innerHTML = `<div class="state-box"><h2>Product not found</h2><p>This item may have been archived or moved.</p><a class="btn-primary" href="/shop.html">Browse catalog</a></div>`;
+        } else {
+          root.innerHTML = `<div class="state-box"><p>Loading product details…</p></div>`;
+        }
+        return;
+      }
+
+      const p = s.product;
+      document.title = `${p.name} — SindhCraft`;
+      const plainText = p.descriptionHtml ? p.descriptionHtml.replace(/<[^>]+>/g, " ").trim() : "";
+      if (plainText) {
+        const metaDesc = document.querySelector('meta[name="description"]');
+        if (metaDesc) metaDesc.setAttribute("content", plainText.slice(0, 155));
+      }
+
+      const gallery = p.gallery || [];
+      const heroUrl = activeGalleryUrl || s.imageUrl || gallery[0] || "";
+
+      const crumbsHtml = [
+        `<a href="/index.html">Home</a>`,
+        `<a href="/shop.html">Shop</a>`,
+        ...(p.breadcrumbs || []).map(
+          (b) => `<a href="/category.html?slug=${encodeURIComponent(b.slug)}">${esc(b.name)}</a>`
+        ),
+        `<span aria-current="page">${esc(p.name)}</span>`
+      ].join(" <span>/</span> ");
+
+      const thumbsHtml =
+        gallery.length > 1
+          ? `<div class="pdp-thumbs">${gallery
+              .map(
+                (url, idx) => `<button type="button" class="pdp-thumb" data-thumb-url="${esc(url)}" aria-pressed="${url === heroUrl}" aria-label="View image ${idx + 1}"><img src="${esc(imgSrc(url, 180, 180))}" alt=""></button>`
+              )
+              .join("")}</div>`
+          : "";
+
+      const ribbonsHtml = (p.ribbons || []).length
+        ? `<div class="pdp-ribbons">${p.ribbons.map((r) => `<span class="ribbon-tag">${esc(r)}</span>`).join("")}</div>`
+        : "";
+
+      const optionsHtml = (s.optionGroups || [])
+        .map((g) => {
+          const choicesHtml = g.choices
+            .map((c) => {
+              const disabled = !c.inStock || !c.exists ? " disabled" : "";
+              if (g.isColor) {
+                return `<button type="button" class="swatch-btn" data-option="${esc(g.id)}" data-choice="${esc(c.choiceId)}" aria-pressed="${Boolean(c.selected)}"${disabled}><span class="swatch-dot" style="background-color:${esc(c.colorCode || "#cccccc")}"></span><span>${esc(c.name)}</span></button>`;
+              }
+              return `<button type="button" class="choice-chip" data-option="${esc(g.id)}" data-choice="${esc(c.choiceId)}" aria-pressed="${Boolean(c.selected)}"${disabled}>${esc(c.name)}</button>`;
+            })
+            .join("");
+          return `<fieldset class="option-fieldset"><legend class="option-legend">${esc(g.name)}</legend><div class="option-choices">${choicesHtml}</div></fieldset>`;
+        })
+        .join("");
+
+      const modifiersHtml = (p.modifiers || [])
+        .map((m) => {
+          const currentVal = (s.modifierValues || {})[m.key] || "";
+          if (m.type === "choices") {
+            return `<fieldset class="option-fieldset"><legend class="option-legend">${esc(m.name)}${m.mandatory ? " *" : ""}</legend><div class="option-choices">${m.choices
+              .map(
+                (ch) => `<button type="button" class="choice-chip" data-mod-key="${esc(m.key)}" data-mod-choice="${esc(ch.key)}" aria-pressed="${currentVal === ch.key}">${esc(ch.name)}</button>`
+              )
+              .join("")}</div></fieldset>`;
+          }
+          const maxAttr = m.maxChars ? ` maxlength="${m.maxChars}"` : "";
+          return `<div><label class="option-legend" for="mod-${esc(m.key)}">${esc(m.title || m.name)}${m.mandatory ? " *" : ""}</label><input class="field-input" id="mod-${esc(m.key)}" type="text" data-mod-text="${esc(m.key)}" value="${esc(currentVal)}"${maxAttr}></div>`;
+        })
+        .join("");
+
+      const plansHtml =
+        (s.plans || []).length > 0
+          ? `<fieldset class="option-fieldset"><legend class="option-legend">Purchase option</legend><div class="option-choices">
+              ${
+                p.allowOneTimePurchase
+                  ? `<button type="button" class="choice-chip" data-plan-id="${esc(ONE_TIME_PLAN)}" aria-pressed="${s.selectedPlanId === ONE_TIME_PLAN}">One-time purchase</button>`
+                  : ""
+              }
+              ${s.plans
+                .map(
+                  (pl) => `<button type="button" class="choice-chip" data-plan-id="${esc(pl.id)}" aria-pressed="${s.selectedPlanId === pl.id}">${esc(pl.name)} (${esc(pl.price)})</button>`
+                )
+                .join("")}
+            </div></fieldset>`
+          : "";
+
+      const decDisabled = s.quantity <= 1 ? " disabled" : "";
+      const incDisabled = s.maxQuantity != null && s.quantity >= s.maxQuantity ? " disabled" : "";
+      const addLabel = s.adding ? "Adding…" : s.isPreorder ? "Pre-order" : "Add to cart";
+
+      const remainingHtml =
+        s.remaining != null && s.remaining > 0 && s.remaining <= 10
+          ? `<p class="stock-note">${s.remaining} left in stock</p>`
+          : "";
+
+      const notifyHtml = s.canNotify
+        ? `<div class="notify-box">
+            <strong>Out of stock</strong>
+            <p style="margin:0;font-size:0.9rem;color:var(--color-ink-muted);">Enter your email to be notified when this item returns.</p>
+            <form class="notify-form" id="pdp-notify-form">
+              <input class="field-input" id="pdp-notify-email" type="email" required placeholder="you@example.com" value="${esc(notifyEmail)}"${s.notifying ? " disabled" : ""}>
+              <button type="submit" class="btn-secondary"${s.notifying ? " disabled" : ""}>${s.notifying ? "Saving…" : "Notify me"}</button>
+            </form>
+            ${s.notifyResult ? `<p style="margin:0;font-size:0.86rem;color:var(--color-success);">${s.notifyResult === "already-subscribed" ? "You are already on the alert list." : "Alert saved. We will email you once restocked."}</p>` : ""}
+            ${s.notifyError ? `<p class="error-text" role="alert">${esc(s.notifyError)}</p>` : ""}
+          </div>`
+        : "";
+
+      const infoHtml = (p.infoSections || []).length
+        ? `<div class="info-sections">${p.infoSections
+            .map(
+              (sec, idx) => `<details class="info-section-item"${idx === 0 ? " open" : ""}><summary>${esc(sec.title)}</summary><div class="info-section-body">${sec.html}</div></details>`
+            )
+            .join("")}</div>`
+        : "";
+
+      root.innerHTML = `
+        <nav class="breadcrumbs" aria-label="Breadcrumb">${crumbsHtml}</nav>
+        <div class="pdp-grid">
+          <div class="pdp-gallery">
+            <div class="pdp-main-frame">
+              ${
+                heroUrl
+                  ? `<img src="${esc(imgSrc(heroUrl, 960, 960))}" alt="${esc(p.name)}">`
+                  : `<div class="tile-placeholder">${esc(p.name)}</div>`
+              }
+            </div>
+            ${thumbsHtml}
+          </div>
+
+          <div class="pdp-info">
+            ${ribbonsHtml}
+            <h1 class="pdp-title">${esc(p.name)}</h1>
+            <div class="pdp-price-block">
+              <span class="pdp-price">${esc(s.price)}</span>
+              ${s.compareAtPrice ? `<span class="pdp-compare">${esc(s.compareAtPrice)}</span>` : ""}
+              ${s.pricePerUnit ? `<span class="price-unit">${esc(s.pricePerUnit)}</span>` : ""}
+            </div>
+            ${p.descriptionHtml ? `<div class="pdp-description">${p.descriptionHtml}</div>` : ""}
+            ${optionsHtml}
+            ${modifiersHtml}
+            ${plansHtml}
+            <div class="pdp-buy-row">
+              <div class="stepper">
+                <button type="button" data-step="-1" aria-label="Decrease quantity"${decDisabled}>−</button>
+                <span>${s.quantity}</span>
+                <button type="button" data-step="1" aria-label="Increase quantity"${incDisabled}>+</button>
+              </div>
+              <button type="button" class="btn-primary pdp-add-btn" data-add${s.canAdd && !s.adding ? "" : " disabled"}>${addLabel}</button>
+            </div>
+            ${s.preorderMessage && s.isPreorder ? `<p class="blocked-note">${esc(s.preorderMessage)}</p>` : ""}
+            ${remainingHtml}
+            ${s.blockedReason && !s.canAdd ? `<p class="blocked-note">${esc(s.blockedReason)}</p>` : ""}
+            ${s.error ? `<p class="error-text" role="alert">${esc(s.error)}</p>` : ""}
+            ${notifyHtml}
+            ${infoHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    store.subscribe(render);
+    render(store.getState());
+    store.start();
+  </script>
+</body>
+</html>
