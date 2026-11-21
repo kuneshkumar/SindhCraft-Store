@@ -1,4 +1,4 @@
-# SindhCraft Storefront Source Code
+# SindhCraft 
 
 Complete static HTML, CSS, and modular ES JavaScript source code for the **SindhCraft** online store.
 
